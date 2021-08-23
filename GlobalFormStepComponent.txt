@@ -1,0 +1,21 @@
+package com.aem.tfb.core.components;
+
+import com.aem.tfb.core.models.FormStep;
+import lombok.Getter;
+
+public class GlobalFormStepComponent extends ComponentController{
+
+    @Getter
+    private FormStep formStep;
+
+    @Override
+    protected String getAnalyticsComponentType() {
+        return "Global Form Step";
+    }
+
+    @Override
+    public void activateController() {
+
+        this.formStep = getModel("globalFormStep", FormStep.class);
+    }
+}

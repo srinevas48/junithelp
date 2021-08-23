@@ -1,0 +1,61 @@
+package com.aem.tfb.core.models;
+
+import com.aem.tfb.core.services.LeadGenPostDataService;
+import lombok.Getter;
+import lombok.Setter;
+import org.apache.sling.api.resource.Resource;
+import org.apache.sling.models.annotations.Model;
+import org.apache.sling.models.annotations.Optional;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import javax.annotation.PostConstruct;
+import javax.inject.Inject;
+import java.util.List;
+
+@Model(adaptables = Resource.class)
+public class FormStep {
+
+    private static final Logger LOGGER = LoggerFactory.getLogger(FormStep.class);
+
+    @Inject @Optional @Getter @Setter
+    private String headline;
+
+    @Inject @Optional @Getter @Setter
+    private String formDetails;
+
+    @Inject @Optional @Getter @Setter
+    private String requiredMsg;
+
+    @Inject @Optional @Getter @Setter
+    private List<FormStepNavigation> btnLinks;
+
+    @Inject @Optional @Getter @Setter
+    private String termsText;
+
+    @Inject @Optional @Getter @Setter
+    private String offersText;
+    
+    @Inject @Optional @Getter @Setter
+    private String finalPageHeadline;
+    
+    @Inject @Optional @Getter @Setter
+    private String finalPageSubtext;
+    
+    @Inject @Optional @Getter @Setter
+    private String finalPageAdditionalInfo;
+
+    @Inject @Optional @Getter @Setter
+    private String googleCaptchaSiteId;
+
+    @Inject
+    private LeadGenPostDataService googleCaptchaService;
+
+    @PostConstruct
+    protected void init() {
+        googleCaptchaSiteId = googleCaptchaService.getGoogleCaptchaSiteId();
+        if (LOGGER.isDebugEnabled()) {
+            LOGGER.debug(String.format("Google Captcha Site Id :: %s", googleCaptchaSiteId));
+        }
+    }
+}
