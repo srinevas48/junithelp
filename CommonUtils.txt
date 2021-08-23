@@ -1,0 +1,147 @@
+package com.aem.tfb.core.common.util;
+
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.net.URI;
+import java.net.URISyntaxException;
+import java.net.URL;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.Map;
+
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.TrustManager;
+import javax.net.ssl.X509TrustManager;
+
+import org.apache.commons.lang.StringUtils;
+import org.apache.http.conn.ssl.SSLConnectionSocketFactory;
+import org.apache.http.impl.client.CloseableHttpClient;
+import org.apache.http.impl.client.HttpClients;
+import org.apache.sling.api.SlingHttpServletRequest;
+import org.osgi.service.component.annotations.Reference;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import com.aem.tfb.core.common.constants.GlobalConstants;
+import com.aem.tfb.core.exceptions.TfbAppInternalException;
+import com.aem.tfb.core.services.testdrive.TestDriveConfigurationService;
+import com.google.gson.JsonObject;
+import com.tmobile.security.taap.poptoken.builder.PopEhtsKey;
+import com.tmobile.security.taap.poptoken.builder.PopTokenBuilder;
+import com.tmobile.security.taap.poptoken.builder.exception.PopTokenBuilderException;
+
+/**
+ * Utility class for common functionality.
+ */
+public final class CommonUtils {
+    private static final Logger LOGGER = LoggerFactory.getLogger(CommonUtils.class);
+    
+    @Reference
+    private static TestDriveConfigurationService testDriveConfigurationService;
+
+    private CommonUtils() {
+        // Default private constructor.
+    }
+
+
+
+    public static CloseableHttpClient getSSLDetails() {
+        LOGGER.info("Inside getSSLDetails");
+        try {
+            SSLContext sslContext = SSLContext.getInstance("TLSv1.2");
+            // set up a TrustManager that trusts everything
+            sslContext.init(null, new TrustManager[]{new X509TrustManager() {
+                public java.security.cert.X509Certificate[] getAcceptedIssuers() {
+                    return new java.security.cert.X509Certificate[0];
+                }
+
+                public void checkClientTrusted(java.security.cert.X509Certificate[] certs, String authType) {
+                    LOGGER.info("inside checkClientTrusted");
+                }
+
+                public void checkServerTrusted(java.security.cert.X509Certificate[] certs, String authType) {
+                    LOGGER.info("inside checkServerTrusted");
+                }
+            }}, new java.security.SecureRandom());
+            return HttpClients.custom().setSSLSocketFactory(new SSLConnectionSocketFactory(sslContext)).build();
+        } catch (Exception exception) {
+            LOGGER.error("Exception While getting SSL Details", exception.getLocalizedMessage(), exception);
+        }
+        return null;
+    }
+
+    public static String getPrivateKeyPemString(String certName) throws IOException {
+        //URL textFile = FrameworkUtil.getBundle(this.getClass()).getBundleContext().getBundle().getResource(fileName);
+        String privateKeyPemString = null;
+        URL textFile = CommonUtils.class.getResource(certName);
+        BufferedReader br =new BufferedReader(new InputStreamReader(textFile.openConnection().getInputStream()));
+        while(br.ready()) {
+            StringBuilder response = new StringBuilder();
+            for (String line = null; (line = br.readLine()) != null;) {
+                response.append(line);
+            }
+            privateKeyPemString = response.toString();
+        }
+        return privateKeyPemString;
+    }
+    
+    public static JsonObject getRequestParameters(SlingHttpServletRequest request, String[] paramsArray) {
+    	 JsonObject dataJson = new JsonObject();
+         for (String requestParam: paramsArray) {
+         dataJson.addProperty(requestParam, request.getParameter(requestParam));
+         }
+         return dataJson;
+    }
+    
+    public static void setPopToken(LinkedHashMap<String,String> headerMap, JsonObject body, boolean isPopTokenRequired, String endPoint) throws TfbAppInternalException {
+        if(!isPopTokenRequired) {
+            return;
+        }
+        try {
+            LOGGER.info("Setting pop token for " + endPoint);
+            String privateKeyPemString = getPrivateKeyPemString(GlobalConstants.TEST_DRIVE_CERT_PATH);
+            LinkedHashMap<String, String> ehtsKeyValueMap = createEhtsMap(headerMap, body, endPoint);
+            String popToken = PopTokenBuilder.newInstance()
+                    .setEhtsKeyValueMap(ehtsKeyValueMap)
+                    .signWith(privateKeyPemString)
+                    .build();
+
+            headerMap.put(GlobalConstants.X_AUTHORIZATION, popToken);
+        } catch (IOException e) {
+            throw new TfbAppInternalException("Error fetching pem key", e);
+        } catch (PopTokenBuilderException e) {
+            throw new TfbAppInternalException("Error fetching pop token", e);
+        } catch (URISyntaxException e) {
+            throw new TfbAppInternalException("Error creating URI", e);
+        }
+    }
+    
+    public static LinkedHashMap<String, String> createEhtsMap(LinkedHashMap<String,String> headerMap, JsonObject body, String endPoint) throws URISyntaxException {
+        LinkedHashMap<String, String> ehtsKeyValueMap = new LinkedHashMap<>(headerMap);
+        ehtsKeyValueMap.put(PopEhtsKey.URI.keyName(), new URI(endPoint).getPath());
+        ehtsKeyValueMap.put(PopEhtsKey.HTTP_METHOD.keyName(), "POST");
+        ehtsKeyValueMap.put(PopEhtsKey.BODY.keyName(), body.toString());
+        return ehtsKeyValueMap;
+    }
+    
+	public static JsonObject getRequestParameters(String requestData, String[] paramsArray) {
+		JsonObject dataJson = new JsonObject();
+		Map<String, String> requestDataMap = new HashMap();
+		if (null != requestData) {
+			String[] dataArray = requestData.split("&");
+			for (String dataItem : dataArray) {
+				String[] keyValuePair = dataItem.split("=");
+				if (keyValuePair.length == 2) {
+					requestDataMap.put(keyValuePair[0], keyValuePair[1]);
+				} else {
+					requestDataMap.put(keyValuePair[0], StringUtils.EMPTY);
+				}
+			}
+		}
+		for (String requestParam : paramsArray) {
+			dataJson.addProperty(requestParam, requestDataMap.get(requestParam));
+		}
+		return dataJson;
+	}
+}
